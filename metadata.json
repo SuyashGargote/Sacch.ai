@@ -1,0 +1,7 @@
+{
+  "name": "Sacch.ai",
+  "description": "A comprehensive AI-powered portal for detecting facts, scams, fraud, and deepfakes using Gemini 2.5 and Search Grounding.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
