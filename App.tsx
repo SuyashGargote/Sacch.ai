@@ -4,6 +4,7 @@ import FactChecker from './components/FactChecker';
 import ScamDetector from './components/ScamDetector';
 import DeepfakeDetector from './components/DeepfakeDetector';
 import VoiceAssistant from './components/VoiceAssistant';
+import SecurityScanner from './components/SecurityScanner';
 import LandingPage from './components/LandingPage';
 import { AppMode } from './types';
 
@@ -60,6 +61,11 @@ const App: React.FC = () => {
             {mode === AppMode.VOICE_ASSISTANT && (
                <div className="animate-fade-in h-full">
                 <VoiceAssistant />
+              </div>
+            )}
+            {mode === AppMode.SECURITY_SCANNER && (
+               <div className="animate-fade-in h-full">
+                <SecurityScanner />
               </div>
             )}
           </div>

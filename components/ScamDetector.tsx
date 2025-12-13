@@ -1,44 +1,22 @@
-import React, { useState, useRef } from 'react';
-import { Mail, Link as LinkIcon, FileSearch, ShieldCheck, ShieldAlert, AlertOctagon, Info, ArrowRight, Check, Upload, File as FileIcon, X, ChevronRight, Activity, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mail, ShieldCheck, ShieldAlert, AlertOctagon, Info, ArrowRight, Check, Activity, AlertTriangle, ChevronRight } from 'lucide-react';
 import { analyzeScamContent } from '../services/geminiService';
 import { ScamAnalysisResult, Verdict } from '../types';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 
 const ScamDetector: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'EMAIL' | 'URL' | 'FILE'>('EMAIL');
   const [inputText, setInputText] = useState('');
-  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ScamAnalysisResult | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const calculateSHA256 = async (file: File): Promise<string> => {
-    const buffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex;
-  };
 
   const handleAnalyze = async () => {
-    if (activeTab === 'EMAIL' || activeTab === 'URL') {
-       if (!inputText.trim()) return;
-    } else if (activeTab === 'FILE') {
-       if (!file) return;
-    }
+    if (!inputText.trim()) return;
 
     setLoading(true);
     setResult(null);
 
     try {
-      let contentToAnalyze = inputText;
-      
-      // If File tab, we hash the file and send the hash
-      if (activeTab === 'FILE' && file) {
-        contentToAnalyze = await calculateSHA256(file);
-      }
-
-      const data = await analyzeScamContent(contentToAnalyze, activeTab);
+      const data = await analyzeScamContent(inputText, 'EMAIL');
       setResult(data);
     } catch (error) {
       alert("Analysis failed. Ensure API keys are configured and try again.");
@@ -46,20 +24,6 @@ const ScamDetector: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setResult(null);
-    }
-  };
-
-  const clearFile = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setFile(null);
-    setResult(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const getVerdictStyles = (verdict: Verdict) => {
@@ -195,7 +159,7 @@ const ScamDetector: React.FC = () => {
       <div className="mb-6 md:mb-10 text-center space-y-2">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Scam & Fraud Intelligence</h2>
         <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto text-sm md:text-base">
-          Detect phishing, malware, and fraud using Gemini AI + VirusTotal threat intelligence.
+          Detect phishing and fraud in emails using Gemini AI + threat intelligence.
         </p>
       </div>
 
@@ -204,125 +168,43 @@ const ScamDetector: React.FC = () => {
         {/* Left Column: Input Section */}
         <div className="lg:col-span-5 space-y-6">
           
-          {/* Tab Switcher */}
-          <div className="bg-white dark:bg-slate-900/80 p-1.5 rounded-2xl flex shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 dark:border-slate-800/50 backdrop-blur-sm">
-            <button
-              onClick={() => { setActiveTab('EMAIL'); setResult(null); setInputText(''); setFile(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-semibold transition-all duration-300 text-sm md:text-base ${
-                activeTab === 'EMAIL' 
-                  ? 'bg-slate-100 dark:bg-slate-800 text-cyan-700 dark:text-cyan-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}
-            >
-              <Mail size={16} /> 
-              <span className="hidden sm:inline">Email</span>
-            </button>
-            <button
-              onClick={() => { setActiveTab('URL'); setResult(null); setInputText(''); setFile(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-semibold transition-all duration-300 text-sm md:text-base ${
-                activeTab === 'URL' 
-                  ? 'bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}
-            >
-              <LinkIcon size={16} /> 
-              <span className="hidden sm:inline">URL</span>
-            </button>
-            <button
-              onClick={() => { setActiveTab('FILE'); setResult(null); setInputText(''); setFile(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-semibold transition-all duration-300 text-sm md:text-base ${
-                activeTab === 'FILE' 
-                  ? 'bg-slate-100 dark:bg-slate-800 text-rose-700 dark:text-rose-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}
-            >
-              <FileSearch size={16} /> 
-              <span className="hidden sm:inline">File</span>
-            </button>
+          {/* Email Analysis Header */}
+          <div className="bg-white dark:bg-slate-900/80 p-4 rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 dark:border-slate-800/50 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-cyan-100 dark:bg-cyan-500/20 rounded-xl">
+                <Mail size={24} className="text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Email Analysis</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Paste email content for scam detection</p>
+              </div>
+            </div>
           </div>
 
           {/* Input Area */}
           <div className="relative group">
-            <div className={`absolute -inset-0.5 rounded-3xl opacity-20 group-hover:opacity-30 transition duration-500 blur 
-              ${activeTab === 'EMAIL' ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 
-                activeTab === 'URL' ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 
-                'bg-gradient-to-r from-rose-500 to-orange-500'}`}></div>
+            <div className={`absolute -inset-0.5 rounded-3xl opacity-20 group-hover:opacity-30 transition duration-500 blur bg-gradient-to-r from-cyan-500 to-blue-500`}></div>
             
             <div className="relative bg-white dark:bg-slate-900 rounded-3xl p-1 border border-slate-100 dark:border-slate-800 shadow-2xl h-80 flex flex-col">
-              {activeTab === 'FILE' ? (
-                // File Upload UI
-                <div 
-                  onClick={() => !file && fileInputRef.current?.click()}
-                  className={`flex-1 rounded-2xl border-2 border-dashed m-1 flex flex-col items-center justify-center transition-all
-                    ${file 
-                      ? 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900' 
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-900 hover:border-rose-400 cursor-pointer'}
-                  `}
-                >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef}
-                    onChange={handleFileChange} 
-                    className="hidden" 
-                  />
-                  
-                  {!file ? (
-                    <div className="text-center p-6 space-y-3">
-                       <div className="w-16 h-16 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center mx-auto shadow-sm border border-slate-100 dark:border-transparent">
-                         <Upload size={28} className="text-rose-500 dark:text-rose-400" />
-                       </div>
-                       <p className="text-slate-700 dark:text-slate-300 font-medium">Upload suspicious file</p>
-                       <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                         We will verify the file hash against the VirusTotal database.
-                       </p>
-                    </div>
-                  ) : (
-                    <div className="relative w-full h-full flex flex-col items-center justify-center p-6 space-y-4">
-                       <FileIcon size={48} className="text-slate-400" />
-                       <div className="text-center">
-                          <p className="text-slate-900 dark:text-white font-medium break-all max-w-[200px] truncate">{file.name}</p>
-                          <p className="text-xs text-slate-500 mt-1">{(file.size / 1024).toFixed(2)} KB</p>
-                       </div>
-                       <button 
-                         onClick={clearFile}
-                         className="absolute top-2 right-2 p-2 bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-rose-500 hover:text-white text-slate-500 dark:text-slate-400 transition-colors"
-                       >
-                         <X size={16} />
-                       </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Text/URL Input UI
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder={activeTab === 'EMAIL' 
-                    ? "Paste the email subject and body here..." 
-                    : "Enter the suspicious website URL (e.g., http://example.com/login)..."
-                  }
-                  className="w-full h-full bg-transparent rounded-2xl p-6 text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:ring-0 resize-none font-mono text-sm leading-relaxed"
-                />
-              )}
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Paste the email subject and body here..."
+                className="w-full h-full bg-transparent rounded-2xl p-6 text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:ring-0 resize-none font-mono text-sm leading-relaxed"
+              />
             </div>
           </div>
 
           {/* Analyze Button */}
           <button
             onClick={handleAnalyze}
-            disabled={loading || (activeTab === 'FILE' ? !file : !inputText)}
-            className={`w-full py-4 rounded-xl font-bold text-white shadow-xl transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 ${
-                activeTab === 'EMAIL' 
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-900/20' 
-                : activeTab === 'URL'
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-indigo-900/20'
-                : 'bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 shadow-rose-900/20'
-            }`}
+            disabled={loading || !inputText}
+            className="w-full py-4 rounded-xl font-bold text-white shadow-xl transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-900/20"
           >
             {loading ? <LoadingSpinner /> : (
               <>
                 <ShieldCheck size={20} />
-                {activeTab === 'FILE' ? 'Scan File Hash' : 'Scan for Threats'}
+                Scan Email for Threats
               </>
             )}
           </button>
@@ -336,27 +218,23 @@ const ScamDetector: React.FC = () => {
                <div className="space-y-4">
                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                    <Info size={20} className="text-cyan-600 dark:text-cyan-400" />
-                   Detection capabilities
+                   Email Scam Detection
                  </h3>
                  <p className="text-sm leading-relaxed">
-                   Our AI engine checks against known patterns of social engineering, malicious domains, and malware signatures.
+                   Our AI engine analyzes email content for phishing attempts, social engineering tactics, and fraudulent patterns.
                  </p>
                </div>
                
                <div className="space-y-4">
                  <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Analysis Sources</h4>
                  <ul className="space-y-3">
-                   <li className="flex items-start gap-3 text-sm">
-                     <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded mt-0.5"><AlertOctagon size={12} className="text-rose-500 dark:text-rose-400" /></div>
-                     <span>Google Search Grounding (Real-time web check)</span>
+                  <li className="flex items-start gap-3 text-sm">
+                     <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded mt-0.5"><AlertOctagon size={12} className="text-cyan-500 dark:text-cyan-400" /></div>
+                     <span>Gemini 2.5 AI (Email Content Analysis)</span>
                    </li>
                    <li className="flex items-start gap-3 text-sm">
                      <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded mt-0.5"><AlertOctagon size={12} className="text-indigo-500 dark:text-indigo-400" /></div>
-                     <span>VirusTotal Database (Malware & URL reputation)</span>
-                   </li>
-                   <li className="flex items-start gap-3 text-sm">
-                     <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded mt-0.5"><AlertOctagon size={12} className="text-cyan-500 dark:text-cyan-400" /></div>
-                     <span>Gemini 2.5 AI (Context & Pattern Analysis)</span>
+                     <span>Google Search Grounding (Real-time verification)</span>
                    </li>
                  </ul>
                </div>

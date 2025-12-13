@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Search, FileWarning, Video, Mic, Sun, Moon } from 'lucide-react';
+import { ShieldCheck, Search, FileWarning, Video, Mic, Sun, Moon, Shield } from 'lucide-react';
 import { AppMode } from '../types';
 
 interface NavbarProps {
@@ -14,6 +14,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentMode, setMode, theme, toggleThem
     { mode: AppMode.FACT_CHECK, label: 'Fact Check', icon: Search, color: 'text-cyan-600 dark:text-cyan-400' },
     { mode: AppMode.SCAM_DETECTOR, label: 'Scam & Fraud', icon: FileWarning, color: 'text-yellow-600 dark:text-yellow-400' },
     { mode: AppMode.DEEPFAKE_DETECTOR, label: 'Deepfake', icon: Video, color: 'text-purple-600 dark:text-purple-400' }, 
+    { mode: AppMode.SECURITY_SCANNER, label: 'Security Scan', icon: Shield, color: 'text-red-600 dark:text-red-400' },
     { mode: AppMode.VOICE_ASSISTANT, label: 'Live Assistant', icon: Mic, color: 'text-pink-600 dark:text-pink-400' },
   ];
 

@@ -1,22 +1,23 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { FactCheckResult, ScamAnalysisResult, DeepfakeResult, Verdict, GroundingSource } from "../types";
+import { scanFileWithVirusTotal, scanUrlWithVirusTotal, VirusTotalReport } from "./virusTotalService";
 
 // Helper to initialize AI client lazily
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // --- Helper: Google Fact Check Tools API ---
 
 const searchFactCheckTools = async (query: string): Promise<{ context: string, sources: GroundingSource[] }> => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { context: "", sources: [] };
 
   try {
     const response = await fetch(
       `https://factchecktools.googleapis.com/v1alpha1/claims:search?query=${encodeURIComponent(query)}&key=${apiKey}`
     );
-    
+
     if (!response.ok) return { context: "", sources: [] };
-    
+
     const data = await response.json();
     let context = "";
     const sources: GroundingSource[] = [];
@@ -29,7 +30,7 @@ const searchFactCheckTools = async (query: string): Promise<{ context: string, s
           const publisher = review.publisher?.name || "Unknown Source";
           const rating = review.textualRating || "Unspecified";
           context += `- Claim: "${claim.text}"\n  Rating: ${rating} by ${publisher}\n`;
-          
+
           if (review.url) {
             sources.push({
               title: `[Fact Check] ${publisher}: ${review.title || claim.text}`,
@@ -40,7 +41,7 @@ const searchFactCheckTools = async (query: string): Promise<{ context: string, s
       });
       context += "\n";
     }
-    
+
     return { context, sources };
   } catch (error) {
     console.error("Fact Check Tools API error:", error);
@@ -143,7 +144,7 @@ export const checkFactWithGemini = async (statement: string): Promise<FactCheckR
       const v = verdictMatch[1].toUpperCase();
       if (v === 'TRUE') verdict = Verdict.TRUE;
       if (v === 'FALSE') verdict = Verdict.FALSE;
-      
+
       // Attempt to extract explanation separate from verdict
       const explanationMatch = text.match(/Explanation:\s*([\s\S]+)/i);
       if (explanationMatch) {
@@ -181,25 +182,258 @@ export const checkFactWithGemini = async (statement: string): Promise<FactCheckR
   }
 };
 
+// --- Enhanced VirusTotal + Gemini Integration Services ---
+
+// Comprehensive file analysis with VirusTotal scanning and Gemini reporting
+export const analyzeFileWithVirusTotalAndGemini = async (file: File): Promise<ScamAnalysisResult> => {
+  try {
+    // 1. Scan file with VirusTotal
+    const vtReport = await scanFileWithVirusTotal(file);
+
+    // 2. Generate comprehensive context from VT results
+    const vtContext = generateVirusTotalContext(vtReport, 'FILE');
+
+    // 3. Use Gemini to generate detailed report
+    const ai = getAI();
+    const prompt = `Analyze this file security report and provide a comprehensive assessment.
+
+    File Information:
+    - Name: ${file.name}
+    - Size: ${(file.size / 1024).toFixed(2)} KB
+    - Type: ${file.type || 'Unknown'}
+    
+    ${vtContext}
+    
+    Based on the VirusTotal threat intelligence above and your security knowledge, provide a detailed security analysis.
+    
+    Output Format (Plain Text):
+    Score: [0-100] (100 = Safe, 0 = Malicious)
+    Verdict: [SAFE / SUSPICIOUS / MALICIOUS]
+    
+    Analysis:
+    ### Executive Summary
+    [Concise summary of the threat level and file characteristics]
+    
+    ### Key Risk Factors
+    - [Risk factor 1 with specific details]
+    - [Risk factor 2 with specific details]
+    
+    ### Technical Analysis
+    [Detailed analysis of VirusTotal findings, specific malware families detected, attack vectors, etc.]
+    
+    ### Security Recommendations
+    - [Action 1 - Specific and actionable]
+    - [Action 2]
+    - [Action 3]`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt
+    });
+
+    const textRes = response.text || "";
+
+    // Parse the response
+    let score = 50;
+    let verdict = Verdict.SUSPICIOUS;
+    let analysis = textRes;
+    let recommendations = ["Proceed with caution."];
+
+    // Parse Score
+    const scoreMatch = textRes.match(/Score:\s*(\d+)/i);
+    if (scoreMatch) score = parseInt(scoreMatch[1], 10);
+
+    // Parse Verdict
+    const verdictMatch = textRes.match(/Verdict:\s*(SAFE|SUSPICIOUS|MALICIOUS)/i);
+    if (verdictMatch) {
+      const v = verdictMatch[1].toUpperCase();
+      if (v === 'SAFE') verdict = Verdict.SAFE;
+      if (v === 'MALICIOUS') verdict = Verdict.MALICIOUS;
+    }
+
+    // Parse Analysis
+    const analysisMatch = textRes.match(/Analysis:\s*([\s\S]+?)(?=###|$)/i);
+    if (analysisMatch) analysis = analysisMatch[1].trim();
+
+    // Parse Recommendations
+    const recMatch = textRes.match(/### Security Recommendations\s*([\s\S]+)/i);
+    if (recMatch) {
+      recommendations = recMatch[1]
+        .split('\n')
+        .map(s => s.trim().replace(/^-\s*/, '').replace(/^\*\s*/, '').replace(/^\d+\.\s*/, ''))
+        .filter(s => s.length > 0);
+    }
+
+    return {
+      score,
+      verdict,
+      analysis,
+      recommendations,
+      vtStats: vtReport.analysis,
+      permalink: vtReport.permalink
+    };
+
+  } catch (error) {
+    console.error("File analysis error:", error);
+    throw new Error("Failed to analyze file. Please try again.");
+  }
+};
+
+// Comprehensive URL analysis with VirusTotal scanning and Gemini reporting
+export const analyzeUrlWithVirusTotalAndGemini = async (url: string): Promise<ScamAnalysisResult> => {
+  try {
+    // 1. Scan URL with VirusTotal
+    const vtReport = await scanUrlWithVirusTotal(url);
+
+    // 2. Generate comprehensive context from VT results
+    const vtContext = generateVirusTotalContext(vtReport, 'URL');
+
+    // 3. Use Gemini to generate detailed report with search capabilities
+    const ai = getAI();
+    const prompt = `Analyze this URL security report and provide a comprehensive assessment.
+
+    Target URL: "${url}"
+    
+    ${vtContext}
+    
+    Using the VirusTotal threat intelligence above, Google Search results, and your security knowledge, provide a detailed security analysis.
+    
+    Output Format (Plain Text):
+    Score: [0-100] (100 = Safe, 0 = Malicious)
+    Verdict: [SAFE / SUSPICIOUS / MALICIOUS]
+    
+    Analysis:
+    ### Executive Summary
+    [Concise summary of the threat level and website characteristics]
+    
+    ### Key Risk Factors
+    - [Risk factor 1 with specific details]
+    - [Risk factor 2 with specific details]
+    
+    ### Technical Analysis
+    [Detailed analysis of VirusTotal findings, specific threats detected, reputation issues, etc.]
+    
+    ### Security Recommendations
+    - [Action 1 - Specific and actionable]
+    - [Action 2]
+    - [Action 3]`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }]
+      }
+    });
+
+    const textRes = response.text || "";
+
+    // Parse the response
+    let score = 50;
+    let verdict = Verdict.SUSPICIOUS;
+    let analysis = textRes;
+    let recommendations = ["Proceed with caution."];
+
+    // Parse Score
+    const scoreMatch = textRes.match(/Score:\s*(\d+)/i);
+    if (scoreMatch) score = parseInt(scoreMatch[1], 10);
+
+    // Parse Verdict
+    const verdictMatch = textRes.match(/Verdict:\s*(SAFE|SUSPICIOUS|MALICIOUS)/i);
+    if (verdictMatch) {
+      const v = verdictMatch[1].toUpperCase();
+      if (v === 'SAFE') verdict = Verdict.SAFE;
+      if (v === 'MALICIOUS') verdict = Verdict.MALICIOUS;
+    }
+
+    // Parse Analysis
+    const analysisMatch = textRes.match(/Analysis:\s*([\s\S]+?)(?=###|$)/i);
+    if (analysisMatch) analysis = analysisMatch[1].trim();
+
+    // Parse Recommendations
+    const recMatch = textRes.match(/### Security Recommendations\s*([\s\S]+)/i);
+    if (recMatch) {
+      recommendations = recMatch[1]
+        .split('\n')
+        .map(s => s.trim().replace(/^-\s*/, '').replace(/^\*\s*/, '').replace(/^\d+\.\s*/, ''))
+        .filter(s => s.length > 0);
+    }
+
+    return {
+      score,
+      verdict,
+      analysis,
+      recommendations,
+      vtStats: vtReport.analysis,
+      permalink: vtReport.permalink
+    };
+
+  } catch (error) {
+    console.error("URL analysis error:", error);
+    throw new Error("Failed to analyze URL. Please try again.");
+  }
+};
+
+// Helper function to generate context from VirusTotal report
+const generateVirusTotalContext = (report: VirusTotalReport, type: 'FILE' | 'URL'): string => {
+  const stats = report.analysis;
+  const total = stats.malicious + stats.suspicious + stats.harmless + stats.undetected;
+  const maliciousRatio = total > 0 ? (stats.malicious / total * 100).toFixed(1) : '0';
+
+  let context = `
+### VIRUSTOTAL THREAT INTELLIGENCE REPORT:
+- **Scan Date**: ${new Date(report.scanDate).toLocaleString()}
+- **Total Engines**: ${total}
+- **Malicious Detections**: ${stats.malicious} (${maliciousRatio}%)
+- **Suspicious Detections**: ${stats.suspicious}
+- **Harmless Detections**: ${stats.harmless}
+- **Undetected**: ${stats.undetected}
+- **Full Report**: ${report.permalink}
+
+`;
+
+  // Add specific detection details if malicious or suspicious
+  if (stats.malicious > 0 || stats.suspicious > 0) {
+    context += "\n### SPECIFIC THREAT DETECTIONS:\n";
+    Object.entries(report.scans).forEach(([engine, result]) => {
+      if (result.detected) {
+        context += `- **${engine}**: ${result.result}\n`;
+      }
+    });
+    context += "\n";
+  }
+
+  // Add critical instruction for Gemini
+  context += `
+**CRITICAL ANALYSIS INSTRUCTIONS**: 
+- If malicious detections > 0, verdict MUST be SUSPICIOUS or MALICIOUS
+- If malicious detections > 5, verdict MUST be MALICIOUS
+- Consider the specific threat names and attack vectors in your analysis
+- Provide context about what the detected threats typically do
+`;
+
+  return context;
+};
+
 // --- Scam Detection Service ---
 
 export const analyzeScamContent = async (text: string, type: 'EMAIL' | 'URL' | 'FILE'): Promise<ScamAnalysisResult> => {
   const ai = getAI();
-  
+
   // URL or FILE Analysis
   if (type === 'URL' || type === 'FILE') {
     // 1. Check VirusTotal
     const vtReport = await checkVirusTotal(text, type);
-    
+
     let vtContext = "";
     let vtStats = undefined;
 
     if (vtReport && vtReport.found) {
       const stats = vtReport.data.attributes.last_analysis_stats;
       vtStats = stats;
-      
+
       const total = stats.malicious + stats.suspicious + stats.harmless + stats.undetected;
-      
+
       vtContext = `
       ### VIRUSTOTAL THREAT INTELLIGENCE (Priority):
       - **Malicious Detections**: ${stats.malicious} / ${total} engines
@@ -251,7 +485,7 @@ export const analyzeScamContent = async (text: string, type: 'EMAIL' | 'URL' | '
     try {
       const config: any = {};
       if (type === 'URL') {
-         config.tools = [{ googleSearch: {} }];
+        config.tools = [{ googleSearch: {} }];
       }
 
       const response = await ai.models.generateContent({
@@ -261,7 +495,7 @@ export const analyzeScamContent = async (text: string, type: 'EMAIL' | 'URL' | '
       });
 
       const textRes = response.text || "";
-      
+
       // Defaults
       let score = 50;
       let verdict = Verdict.SUSPICIOUS;
@@ -297,11 +531,11 @@ export const analyzeScamContent = async (text: string, type: 'EMAIL' | 'URL' | '
       return { score, verdict, analysis, recommendations, vtStats };
 
     } catch (error) {
-       console.error(`${type} Scam analysis error:`, error);
-       throw new Error(`Failed to analyze ${type}.`);
+      console.error(`${type} Scam analysis error:`, error);
+      throw new Error(`Failed to analyze ${type}.`);
     }
-  } 
-  
+  }
+
   // Email Analysis
   else {
     const prompt = `Analyze the following email text for indicators of phishing, fraud, or scams.

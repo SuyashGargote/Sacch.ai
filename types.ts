@@ -2,7 +2,8 @@ export enum AppMode {
   FACT_CHECK = 'FACT_CHECK',
   SCAM_DETECTOR = 'SCAM_DETECTOR',
   DEEPFAKE_DETECTOR = 'DEEPFAKE_DETECTOR',
-  VOICE_ASSISTANT = 'VOICE_ASSISTANT'
+  VOICE_ASSISTANT = 'VOICE_ASSISTANT',
+  SECURITY_SCANNER = 'SECURITY_SCANNER'
 }
 
 export enum Verdict {
@@ -38,6 +39,7 @@ export interface ScamAnalysisResult {
     harmless: number;
     undetected: number;
   };
+  permalink?: string;
 }
 
 export interface DeepfakeResult {
