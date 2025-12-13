@@ -103,11 +103,11 @@ const VoiceAssistant: React.FC = () => {
     cleanupAudio();
 
     try {
-      if (!process.env.API_KEY) {
+      if (!process.env.GEMINI_API_KEY) {
          throw new Error("API Key is missing in environment variables.");
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
       // Initialize Audio Contexts
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -146,8 +146,8 @@ const VoiceAssistant: React.FC = () => {
             processorRef.current = processor;
 
             processor.onaudioprocess = (e) => {
-               // If muted or paused, do not send data
-               if (isMutedRef.current || isPausedRef.current || isStoppingRef.current) {
+               // If muted, paused, stopping, or session is not available, do not send data
+               if (isMutedRef.current || isPausedRef.current || isStoppingRef.current || !sessionRef.current) {
                   return;
                }
 
@@ -156,7 +156,7 @@ const VoiceAssistant: React.FC = () => {
                
                // Send data immediately when session is available
                sessionPromise.then(session => {
-                   if (!isStoppingRef.current) {
+                   if (!isStoppingRef.current && session && sessionRef.current === session) {
                      session.sendRealtimeInput({
                          media: {
                              mimeType: "audio/pcm;rate=16000",
@@ -269,7 +269,47 @@ const VoiceAssistant: React.FC = () => {
           },
           onclose: (e) => {
              console.log("Session Closed", e);
-             stopSession();
+             // Clear session reference immediately to prevent further sends
+             sessionRef.current = null;
+             
+             // Stop audio processing
+             if (processorRef.current) {
+                processorRef.current.disconnect();
+                processorRef.current = null;
+             }
+             
+             // Only stop full session if it's an intentional user action
+             if (isStoppingRef.current) {
+                stopSession();
+             } else {
+                // Session closed unexpectedly, clean up but don't auto-stop
+                console.warn("Session closed unexpectedly during conversation");
+                setError("Connection lost unexpectedly. You may need to restart the session.");
+                setStatus('IDLE');
+                setIsActive(false);
+                
+                // Clean up audio contexts and streams
+                cleanupAudio();
+                if (streamRef.current) {
+                   streamRef.current.getTracks().forEach(track => track.stop());
+                   streamRef.current = null;
+                }
+                if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
+                   inputAudioContextRef.current.close();
+                   inputAudioContextRef.current = null;
+                }
+                if (outputAudioContextRef.current && outputAudioContextRef.current.state !== 'closed') {
+                   outputAudioContextRef.current.close();
+                   outputAudioContextRef.current = null;
+                }
+                
+                // Attempt to reconnect after delay
+                setTimeout(() => {
+                    if (!isStoppingRef.current && !sessionRef.current) {
+                        startSession();
+                    }
+                }, 3000);
+             }
           },
           onerror: (err) => {
              console.error("Session Error (Callback):", err);

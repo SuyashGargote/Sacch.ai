@@ -67,12 +67,67 @@ export const uploadFileToVirusTotal = async (file: File): Promise<VirusTotalScan
     }
 };
 
+// Helper function to validate URL for scanning
+const validateUrlForScanning = (url: string): { valid: boolean; reason?: string } => {
+    try {
+        const urlObj = new URL(url);
+
+        // Check if it's a private/internal IP
+        const hostname = urlObj.hostname.toLowerCase();
+        const privateRanges = [
+            '127.0.0.1', 'localhost', '0.0.0.0',
+            '10.', '192.168.', '172.16.', '172.17.', '172.18.', '172.19.',
+            '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.',
+            '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.',
+            '169.254.', '::1', 'fc00:', 'fe80:'
+        ];
+
+        // Block private/internal IPs and localhost
+        if (privateRanges.some(range => hostname.startsWith(range))) {
+            return { valid: false, reason: 'Private/internal IP addresses cannot be scanned' };
+        }
+
+        // Block VirusTotal domain
+        if (hostname.includes('virustotal.com')) {
+            return { valid: false, reason: 'VirusTotal URLs cannot be scanned' };
+        }
+
+        // Block common security vendor domains that might restrict scanning
+        const restrictedDomains = [
+            'google.com', 'microsoft.com', 'apple.com', 'amazon.com',
+            'facebook.com', 'meta.com', 'twitter.com', 'x.com',
+            'linkedin.com', 'instagram.com', 'youtube.com'
+        ];
+
+        const matchedDomain = restrictedDomains.find(restrictedDomain =>
+            hostname === restrictedDomain || hostname.endsWith('.' + restrictedDomain)
+        );
+
+        if (matchedDomain) {
+            return { valid: false, reason: `Scanning ${matchedDomain} URLs is restricted` };
+        }
+
+        return { valid: true };
+    } catch (error) {
+        return { valid: false, reason: 'Invalid URL format' };
+    }
+};
+
 // Submit a URL for scanning
 export const submitUrlToVirusTotal = async (url: string): Promise<VirusTotalScanResult> => {
     const apiKey = process.env.VIRUSTOTAL_API_KEY;
     if (!apiKey) {
         throw new Error("VirusTotal API Key is missing");
     }
+
+    // Validate URL before submission
+    const validation = validateUrlForScanning(url);
+    if (!validation.valid) {
+        throw new Error(`URL validation failed: ${validation.reason}`);
+    }
+
+    console.log("Submitting URL to VirusTotal:", url);
+    console.log("API Key present:", apiKey ? "Yes" : "No");
 
     const formData = new FormData();
     formData.append('url', url);
@@ -86,8 +141,26 @@ export const submitUrlToVirusTotal = async (url: string): Promise<VirusTotalScan
             body: formData
         });
 
+        console.log("Response status:", response.status);
+        console.log("Response headers:", Object.fromEntries(response.headers.entries()));
+
         if (!response.ok) {
-            throw new Error(`URL submission failed: ${response.statusText}`);
+            const errorText = await response.text();
+            console.error("Error response body:", errorText);
+
+            // Handle specific error cases
+            if (response.status === 403) {
+                try {
+                    const errorData = JSON.parse(errorText);
+                    if (errorData.error?.message === "Private URL") {
+                        throw new Error("This URL cannot be scanned as it's marked as private or restricted by VirusTotal");
+                    }
+                } catch {
+                    // If JSON parsing fails, use generic error
+                }
+            }
+
+            throw new Error(`URL submission failed: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const data = await response.json();
@@ -117,6 +190,9 @@ export const getVirusTotalReport = async (resource: string, type: 'FILE' | 'URL'
         // For URLs, we need to encode it to base64url without padding
         const urlId = btoa(resource).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         endpoint = `https://www.virustotal.com/api/v3/urls/${urlId}`;
+        console.log("Getting URL report for:", resource);
+        console.log("Encoded URL ID:", urlId);
+        console.log("Endpoint:", endpoint);
     }
 
     try {
@@ -127,11 +203,16 @@ export const getVirusTotalReport = async (resource: string, type: 'FILE' | 'URL'
             }
         });
 
+        console.log("Report response status:", response.status);
+
         if (!response.ok) {
             if (response.status === 404) {
+                console.log("URL not found in database");
                 return null; // Not found in database
             }
-            throw new Error(`Report retrieval failed: ${response.statusText}`);
+            const errorText = await response.text();
+            console.error("Report error response:", errorText);
+            throw new Error(`Report retrieval failed: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const data = await response.json();
@@ -216,6 +297,12 @@ export const scanFileWithVirusTotal = async (file: File): Promise<VirusTotalRepo
 
 // Comprehensive URL scanning with automatic waiting
 export const scanUrlWithVirusTotal = async (url: string): Promise<VirusTotalReport> => {
+    // Validate URL before any processing
+    const validation = validateUrlForScanning(url);
+    if (!validation.valid) {
+        throw new Error(`URL validation failed: ${validation.reason}`);
+    }
+
     // First, check if URL already exists in VT database
     const existingReport = await getVirusTotalReport(url, 'URL');
 
