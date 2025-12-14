@@ -54,9 +54,9 @@ class Particle {
         this.size = Math.random() * 1.1 + 0.2; // Smaller text stars for finer detail
         this.vx = 0;
         this.vy = 0;
-        // Floaty physics settings - Smoother animation
-        this.ease = 0.02; 
-        this.friction = 0.95; 
+        // Balanced physics - Snappier than before but still fluid
+        this.ease = 0.04; 
+        this.friction = 0.92; 
     }
 
     this.dx = 0;
@@ -84,19 +84,19 @@ class Particle {
         this.dy = mouseY - this.y;
         this.distance = this.dx * this.dx + this.dy * this.dy;
         
-        // Reduced interaction radius for smaller cursor (radius squared)
-        // 2500 ~= 50px radius
-        const interactionRadius = 2500; 
+        // Interaction radius (radius squared)
+        // 3600 ~= 60px radius
+        const interactionRadius = 3600; 
         
         if (this.distance < interactionRadius) {
-           // Smoother attraction force calculation
-           // Calculate normalized distance (0 to 1)
            const dist = Math.sqrt(this.distance);
            const radius = Math.sqrt(interactionRadius);
            
-           // Linear force: Stronger at center, zero at edge. No infinity spikes.
+           // Linear force: Stronger at center
            const normForce = (radius - dist) / radius;
-           const attractionStrength = 2; // Gentle pull
+           
+           // Increased strength for better responsiveness
+           const attractionStrength = 0.6; 
 
            this.angle = Math.atan2(this.dy, this.dx);
            this.vx += normForce * attractionStrength * Math.cos(this.angle);
@@ -359,7 +359,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onEnter, theme, toggleTheme }
         <div className="bg-white/80 dark:bg-slate-900/50 border-y border-slate-200 dark:border-slate-800 backdrop-blur-sm overflow-hidden py-3">
              <div className="flex gap-12 animate-marquee whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-xs md:text-sm uppercase tracking-wider">
                  <span className="flex items-center gap-2"><AlertCircle size={14}/> Phishing Attempt Blocked (IP: 192.168.x.x)</span>
-                 <span className="flex items-center gap-2"><Check size={14}/> Fact Verified: "Solar flare outage" {'>'} FALSE</span>
+                 <span className="flex items-center gap-2"><Check size={14}/> Fact Verified: "Solar flare outage" - FALSE</span>
                  <span className="flex items-center gap-2"><AlertCircle size={14}/> Deepfake Audio Detected (Confidence: 98%)</span>
                  <span className="flex items-center gap-2"><Database size={14}/> Database Updated: 2.4M new signatures</span>
                  <span className="flex items-center gap-2"><Globe size={14}/> Node Singapore: ONLINE</span>
@@ -443,7 +443,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onEnter, theme, toggleTheme }
                              <div className="text-slate-400">{'>'} Rerouting to Gemini-Pro-Vision for deep scan...</div>
                              <div className="text-red-400">✕ [BLOCK] Phishing pattern detected: "Urgent: Account Suspended"</div>
                              <div className="text-slate-400">{'>'} Updating local threat cache...</div>
-                             <div className="text-emerald-500">✓ [VERIFIED] Claim "Inflation at 2%" {'>'} FALSE</div>
+                             <div className="text-emerald-500">✓ [VERIFIED] Claim "Inflation at 2%" - FALSE</div>
                              <div className="text-slate-400">{'>'} Idle... awaiting input stream.</div>
                              <div className="text-slate-500 animate-pulse">_</div>
                         </div>
