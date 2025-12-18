@@ -24,6 +24,73 @@ SacchAi is a powerful, privacy-focused intelligence platform that helps users de
 - **Real-time Responses**: Get instant answers to your security queries
 - **Multi-language Support**: Works with multiple languages through Gemini's capabilities
 
+## 🏗️ System Architecture
+
+SacchAi is built with a modern, client-side focused architecture that prioritizes security and performance. The system is composed of several key components that work together to provide a seamless user experience.
+
+### Frontend Layer
+- **React 19 with TypeScript**: For building a responsive and type-safe user interface
+- **State Management**: React Context API for global state management
+- **UI Components**: Built with Tailwind CSS for a modern, responsive design
+- **Client-Side Processing**: All sensitive operations (like file hashing) happen in the browser
+
+### AI Services
+- **Google Gemini 2.5**: Powers natural language understanding and generation
+- **Fact Checking**: Integrates with Google Fact Check Tools API
+- **Media Analysis**: Advanced algorithms for detecting AI-generated content
+
+### Security Layer
+- **VirusTotal Integration**: For URL and file scanning
+- **Client-Side Hashing**: Files are hashed locally before any processing
+- **Secure API Communication**: All external API calls are encrypted
+
+### Data Flow
+```mermaid
+graph TD
+    A[User Input] --> B[Frontend]
+    B --> C{Input Type}
+    C -->|Text/Claim| D[Fact Check Service]
+    C -->|URL| E[URL Scanner]
+    C -->|File| F[File Analyzer]
+    D --> G[Google Fact Check API]
+    D --> H[Gemini AI Analysis]
+    E --> I[VirusTotal API]
+    F --> J[Client-Side Hashing]
+    J --> I
+    I --> K[Result Aggregation]
+    H --> K
+    G --> K
+    K --> L[Result Display]
+```
+
+## 🔄 User Workflow
+
+### 1. Fact Verification Flow
+1. **User Input**: User submits a claim or statement
+2. **API Integration**:
+   - Query Google Fact Check Tools API
+   - Perform web search for additional context
+3. **Analysis**: Gemini AI evaluates the claim against multiple sources
+4. **Result**: Returns a verdict with confidence score and evidence
+
+### 2. Security Scanning Flow
+1. **Input Submission**: User uploads a file or submits a URL
+2. **Client-Side Processing**:
+   - Files are hashed locally (never uploaded)
+   - URLs are sanitized and validated
+3. **Threat Analysis**:
+   - Check against VirusTotal's database
+   - Analyze for phishing indicators
+4. **Report Generation**: Detailed security assessment with recommendations
+
+### 3. Media Analysis Flow
+1. **Media Upload**: User uploads an image, audio, or video
+2. **Feature Extraction**: Analyze media for AI-generated artifacts
+3. **Deepfake Detection**:
+   - Check for visual/audio inconsistencies
+   - Analyze metadata and compression artifacts
+4. **Result**: Generate a report on media authenticity
+
 ## 🛠️ Technology Stack
 
 - **Frontend Framework**: React 19 with TypeScript
@@ -56,10 +123,18 @@ SacchAi is a powerful, privacy-focused intelligence platform that helps users de
    ```
 
 3. **Configure environment variables**
-   Create a `.env` file in the root directory with your API keys:
+   Copy the `.env.example` file to `.env` and update it with your API keys:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Then edit the `.env` file to add your API keys:
    ```env
-   # Google Gemini API Key (Required)
-   API_KEY=your_google_gemini_api_key_here
+   # Google Gemini API Key (Required for AI interactions)
+   GEMINI_API_KEY=your_google_gemini_api_key_here
+   
+   # Google Fact Check API Key (Required for fact checking)
+   FACT_CHECK_API_KEY=your_google_fact_check_api_key_here
    
    # VirusTotal API Key (Required for URL/File scanning)
    VIRUSTOTAL_API_KEY=your_virustotal_api_key_here
@@ -71,7 +146,7 @@ SacchAi is a powerful, privacy-focused intelligence platform that helps users de
    # or
    yarn dev
    ```
-   The application will be available at `http://localhost:5173`
+   The application will be available at `http://localhost:3000`
 
 5. **Build for production**
    ```bash
@@ -86,8 +161,19 @@ SacchAi is a powerful, privacy-focused intelligence platform that helps users de
 1. Visit [Google AI Studio](https://aistudio.google.com/)
 2. Sign in with your Google account
 3. Create a new project or select an existing one
-4. Enable the Gemini API and Google Search if needed
+4. Enable the following APIs for your project:
+   - Google AI Gemini API
+   - Google Search API (for web search functionality)
 5. Generate an API key in the API Keys section
+6. Copy the API key and add it to your `.env` file as `GEMINI_API_KEY`
+
+### Google Fact Check Tools API
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Select or create a project
+3. Enable the "Fact Check Tools API"
+4. Go to Credentials
+5. Create an API key
+6. Copy the API key and add it to your `.env` file as `FACT_CHECK_API_KEY`
 
 ### VirusTotal API
 1. Sign up at [VirusTotal](https://www.virustotal.com/)

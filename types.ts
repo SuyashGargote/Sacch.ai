@@ -20,6 +20,8 @@ export enum Verdict {
 export interface GroundingSource {
   title?: string;
   uri?: string;
+  snippet?: string;
+  rating?: string;
 }
 
 export interface FactCheckResult {

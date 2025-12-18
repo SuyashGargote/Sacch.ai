@@ -7,44 +7,97 @@ const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // --- Helper: Google Fact Check Tools API ---
 
+interface FactCheckClaim {
+  text: string;
+  claimReview?: Array<{
+    publisher: {
+      name: string;
+      site?: string;
+    };
+    url: string;
+    title?: string;
+    textualRating?: string;
+    languageCode?: string;
+    reviewDate?: string;
+  }>;
+}
+
+interface FactCheckResponse {
+  claims?: FactCheckClaim[];
+  nextPageToken?: string;
+}
+
 const searchFactCheckTools = async (query: string): Promise<{ context: string, sources: GroundingSource[] }> => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { context: "", sources: [] };
+  const apiKey = process.env.FACT_CHECK_API_KEY;
+  if (!apiKey) {
+    console.warn("Google Fact Check API Key is missing in environment variables (FACT_CHECK_API_KEY).");
+    return { context: "", sources: [] };
+  }
 
   try {
-    const response = await fetch(
-      `https://factchecktools.googleapis.com/v1alpha1/claims:search?query=${encodeURIComponent(query)}&key=${apiKey}`
-    );
+    // Encode the query and prepare the API endpoint
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://factchecktools.googleapis.com/v1alpha1/claims:search?query=${encodedQuery}&key=${apiKey}&languageCode=en&pageSize=5`;
 
-    if (!response.ok) return { context: "", sources: [] };
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-    const data = await response.json();
-    let context = "";
-    const sources: GroundingSource[] = [];
-
-    if (data.claims && Array.isArray(data.claims)) {
-      context = "Existing verified fact checks found via Google Fact Check Tools API:\n";
-      data.claims.forEach((claim: any) => {
-        const review = claim.claimReview?.[0];
-        if (review) {
-          const publisher = review.publisher?.name || "Unknown Source";
-          const rating = review.textualRating || "Unspecified";
-          context += `- Claim: "${claim.text}"\n  Rating: ${rating} by ${publisher}\n`;
-
-          if (review.url) {
-            sources.push({
-              title: `[Fact Check] ${publisher}: ${review.title || claim.text}`,
-              uri: review.url
-            });
-          }
-        }
-      });
-      context += "\n";
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Fact Check API Error (${response.status}):`, error);
+      return { context: "", sources: [] };
     }
 
-    return { context, sources };
+    const data: FactCheckResponse = await response.json();
+
+    if (!data.claims || !Array.isArray(data.claims) || data.claims.length === 0) {
+      return { context: "", sources: [] };
+    }
+
+    let context = "## Fact Check Results from Trusted Sources\n\n";
+    const sources: GroundingSource[] = [];
+    const seenUrls = new Set<string>();
+
+    // Process each claim
+    for (const claim of data.claims) {
+      if (!claim.claimReview || !claim.claimReview.length) continue;
+
+      const review = claim.claimReview[0];
+      if (!review.url || !review.publisher?.name) continue;
+
+      // Avoid duplicate sources
+      if (seenUrls.has(review.url)) continue;
+      seenUrls.add(review.url);
+
+      const publisherName = review.publisher.name;
+      const rating = review.textualRating || 'No rating provided';
+      const reviewDate = review.reviewDate ? new Date(review.reviewDate).toLocaleDateString() : 'Date not available';
+
+      // Add to context
+      context += `### ${publisherName}\n`;
+      context += `- **Claim**: "${claim.text || 'No claim text available'}"\n`;
+      context += `- **Rating**: ${rating}\n`;
+      context += `- **Reviewed on**: ${reviewDate}\n\n`;
+
+      // Add to sources
+      sources.push({
+        title: `${publisherName}: ${review.title || 'Fact Check'}`,
+        uri: review.url,
+        snippet: claim.text,
+        rating: rating
+      });
+    }
+
+    return {
+      context: sources.length > 0 ? context : "",
+      sources
+    };
   } catch (error) {
-    console.error("Fact Check Tools API error:", error);
+    console.error("Error querying Fact Check API:", error);
     return { context: "", sources: [] };
   }
 };
