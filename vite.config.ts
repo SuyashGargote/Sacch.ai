@@ -9,11 +9,16 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: '0.0.0.0',
       proxy: {
-        '/api/virustotal': {
-          target: 'https://www.virustotal.com',
+        '/api': {
+          target: 'https://www.virustotal.com/api/v3',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/virustotal/, '/api/v3'),
-          secure: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+          configure: (proxy, _options) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              // Add VirusTotal API key from environment variable
+              proxyReq.setHeader('x-apikey', env.VIRUSTOTAL_API_KEY || '');
+            });
+          }
         }
       }
     },

@@ -32,22 +32,14 @@ export interface VirusTotalReport {
     }>;
 }
 
-// Upload a file to VirusTotal for scanning
+// Upload a file to VirusTotal for scanning through our proxy
 export const uploadFileToVirusTotal = async (file: File): Promise<VirusTotalScanResult> => {
-    const apiKey = process.env.VIRUSTOTAL_API_KEY;
-    if (!apiKey) {
-        throw new Error("VirusTotal API Key is missing");
-    }
-
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-        const response = await fetch(`/api/virustotal/files`, {
+        const response = await fetch('/api/files', {
             method: 'POST',
-            headers: {
-                'x-apikey': apiKey,
-            },
             body: formData
         });
 
@@ -113,54 +105,24 @@ const validateUrlForScanning = (url: string): { valid: boolean; reason?: string 
     }
 };
 
-// Submit a URL for scanning
+// Submit a URL for scanning through our proxy
 export const submitUrlToVirusTotal = async (url: string): Promise<VirusTotalScanResult> => {
-    const apiKey = process.env.VIRUSTOTAL_API_KEY;
-    if (!apiKey) {
-        throw new Error("VirusTotal API Key is missing");
-    }
-
-    // Validate URL before submission
     const validation = validateUrlForScanning(url);
     if (!validation.valid) {
-        throw new Error(`URL validation failed: ${validation.reason}`);
+        throw new Error(validation.reason || 'Invalid URL');
     }
 
-    console.log("Submitting URL to VirusTotal:", url);
-    console.log("API Key present:", apiKey ? "Yes" : "No");
-
-    const formData = new FormData();
-    formData.append('url', url);
-
     try {
-        const response = await fetch(`/api/virustotal/urls`, {
+        const response = await fetch('/api/urls', {
             method: 'POST',
             headers: {
-                'x-apikey': apiKey,
+                'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: formData
+            body: new URLSearchParams({ url }),
         });
 
-        console.log("Response status:", response.status);
-        console.log("Response headers:", Object.fromEntries(response.headers.entries()));
-
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Error response body:", errorText);
-
-            // Handle specific error cases
-            if (response.status === 403) {
-                try {
-                    const errorData = JSON.parse(errorText);
-                    if (errorData.error?.message === "Private URL") {
-                        throw new Error("This URL cannot be scanned as it's marked as private or restricted by VirusTotal");
-                    }
-                } catch {
-                    // If JSON parsing fails, use generic error
-                }
-            }
-
-            throw new Error(`URL submission failed: ${response.status} ${response.statusText} - ${errorText}`);
+            throw new Error(`URL submission failed: ${response.statusText}`);
         }
 
         const data = await response.json();
@@ -175,30 +137,15 @@ export const submitUrlToVirusTotal = async (url: string): Promise<VirusTotalScan
     }
 };
 
-// Get analysis report for a file or URL
+// Get analysis report for a file or URL through our proxy
 export const getVirusTotalReport = async (resource: string, type: 'FILE' | 'URL'): Promise<VirusTotalReport | null> => {
-    const apiKey = process.env.VIRUSTOTAL_API_KEY;
-    if (!apiKey) {
-        throw new Error("VirusTotal API Key is missing");
-    }
-
-    let endpoint = '';
-
-    if (type === 'FILE') {
-        endpoint = `/api/virustotal/files/${resource}`;
-    } else {
-        // For URLs, we need to encode it to base64url without padding
-        const urlId = btoa(resource).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        endpoint = `/api/virustotal/urls/${urlId}`;
-        console.log("Getting URL report for:", resource);
-        console.log("Encoded URL ID:", urlId);
-        console.log("Endpoint:", endpoint);
-    }
+    const endpoint = type === 'FILE'
+        ? `/api/analyses/${resource}`
+        : `/api/urls/${resource}`;
 
     try {
         const response = await fetch(endpoint, {
             headers: {
-                'x-apikey': apiKey,
                 'Accept': 'application/json'
             }
         });
@@ -221,15 +168,24 @@ export const getVirusTotalReport = async (resource: string, type: 'FILE' | 'URL'
         return {
             scanId: data.data.id,
             resource: resource,
-            scanDate: new Date(attributes.last_analysis_date * 1000).toISOString(),
+            scanDate: attributes.last_analysis_date ?
+                new Date(attributes.last_analysis_date * 1000).toISOString() :
+                new Date().toISOString(),
             permalink: `https://www.virustotal.com/gui/${type.toLowerCase()}/${data.data.id}`,
-            positives: attributes.last_analysis_stats.malicious,
-            total: attributes.last_analysis_stats.malicious +
-                attributes.last_analysis_stats.suspicious +
-                attributes.last_analysis_stats.harmless +
-                attributes.last_analysis_stats.undetected,
-            analysis: attributes.last_analysis_stats,
-            scans: attributes.last_analysis_results
+            positives: attributes.last_analysis_stats?.malicious || 0,
+            total: (attributes.last_analysis_stats?.malicious || 0) +
+                (attributes.last_analysis_stats?.suspicious || 0) +
+                (attributes.last_analysis_stats?.harmless || 0) +
+                (attributes.last_analysis_stats?.undetected || 0),
+            analysis: attributes.last_analysis_stats || {
+                malicious: 0,
+                suspicious: 0,
+                harmless: 0,
+                undetected: 0,
+                timeout: 0,
+                total: 0
+            },
+            scans: attributes.last_analysis_results || {}
         };
     } catch (error) {
         console.error("Report retrieval error:", error);
@@ -243,22 +199,23 @@ export const waitForAnalysis = async (scanId: string, maxWaitTime: number = 3000
 
     while (Date.now() - startTime < maxWaitTime) {
         try {
-            const response = await fetch(`/api/virustotal/analyses/${scanId}`, {
+            const response = await fetch(`/api/analyses/${scanId}`, {
                 headers: {
-                    'x-apikey': process.env.VIRUSTOTAL_API_KEY!,
                     'Accept': 'application/json'
                 }
             });
 
             if (response.ok) {
                 const data = await response.json();
-                const stats = data.data.attributes.stats;
+                const stats = data.data?.attributes?.stats;
 
                 // If analysis is complete
-                if (stats.malicious + stats.suspicious + stats.harmless + stats.undetected > 0) {
+                if (stats && (stats.malicious + stats.suspicious + stats.harmless + stats.undetected) > 0) {
                     // Get the full report
-                    const resourceId = data.data.attributes.resource || data.data.id;
-                    return await getVirusTotalReport(resourceId, 'FILE');
+                    const resourceId = data.data.attributes?.resource || data.data.id;
+                    if (resourceId) {
+                        return await getVirusTotalReport(resourceId, 'FILE');
+                    }
                 }
             }
 
