@@ -43,7 +43,7 @@ export const uploadFileToVirusTotal = async (file: File): Promise<VirusTotalScan
     formData.append('file', file);
 
     try {
-        const response = await fetch('https://www.virustotal.com/api/v3/files', {
+        const response = await fetch(`/api/virustotal/files`, {
             method: 'POST',
             headers: {
                 'x-apikey': apiKey,
@@ -133,7 +133,7 @@ export const submitUrlToVirusTotal = async (url: string): Promise<VirusTotalScan
     formData.append('url', url);
 
     try {
-        const response = await fetch('https://www.virustotal.com/api/v3/urls', {
+        const response = await fetch(`/api/virustotal/urls`, {
             method: 'POST',
             headers: {
                 'x-apikey': apiKey,
@@ -185,11 +185,11 @@ export const getVirusTotalReport = async (resource: string, type: 'FILE' | 'URL'
     let endpoint = '';
 
     if (type === 'FILE') {
-        endpoint = `https://www.virustotal.com/api/v3/files/${resource}`;
+        endpoint = `/api/virustotal/files/${resource}`;
     } else {
         // For URLs, we need to encode it to base64url without padding
         const urlId = btoa(resource).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        endpoint = `https://www.virustotal.com/api/v3/urls/${urlId}`;
+        endpoint = `/api/virustotal/urls/${urlId}`;
         console.log("Getting URL report for:", resource);
         console.log("Encoded URL ID:", urlId);
         console.log("Endpoint:", endpoint);
@@ -243,7 +243,7 @@ export const waitForAnalysis = async (scanId: string, maxWaitTime: number = 3000
 
     while (Date.now() - startTime < maxWaitTime) {
         try {
-            const response = await fetch(`https://www.virustotal.com/api/v3/analyses/${scanId}`, {
+            const response = await fetch(`/api/virustotal/analyses/${scanId}`, {
                 headers: {
                     'x-apikey': process.env.VIRUSTOTAL_API_KEY!,
                     'Accept': 'application/json'

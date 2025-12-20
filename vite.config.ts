@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      proxy: {
+        '/api/virustotal': {
+          target: 'https://www.virustotal.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/virustotal/, '/api/v3'),
+          secure: true,
+        }
+      }
     },
     plugins: [react()],
     define: {
